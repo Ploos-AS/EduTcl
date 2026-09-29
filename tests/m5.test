@@ -75,4 +75,35 @@ test m5-events-1 {part sign nick and raw callback contracts} -setup {
     set ::seen
 } -result {{part A #tcl bye} {sign B #tcl gone} {nick C #tcl D} {raw server 005 CASEMAPPING=rfc1459}}
 
+test m5-reply-1 {reply helper selects help queue} -setup {
+    ::miniegg::reset; source [file join $here .. examples m5 reply.tcl]
+} -body {
+    ::edutcl::reply::channel #tcl {hello world}
+    set o [lindex [::miniegg::output] 0]
+    list [dict get $o kind] [dict get $o line]
+} -result {puthelp {PRIVMSG #tcl :hello world}}
+
+test m5-reply-2 {reply helper rejects protocol injection} -setup {
+    ::miniegg::reset; source [file join $here .. examples m5 reply.tcl]
+} -body {
+    catch {::edutcl::reply::channel #tcl "hello\r\nOPER root"} m o
+    dict get $o -errorcode
+} -result {EDUTCL REPLY NEWLINE}
+
+test m5-state-1 {join nick and part update membership} -body {
+    ::miniegg::reset
+    ::miniegg::emit_join Alice a@h alice #tcl
+    ::miniegg::emit_nick Alice a@h alice #tcl Alicia
+    set afterNick [dict exists [::miniegg::channels] #tcl Alicia]
+    ::miniegg::emit_part Alicia a@h alice #tcl bye
+    list $afterNick [dict exists [::miniegg::channels] #tcl]
+} -result {1 0}
+
+test m5-state-2 {reset clears ephemeral membership} -body {
+    ::miniegg::reset
+    ::miniegg::emit_join Alice a@h alice #tcl
+    ::miniegg::reset
+    dict size [::miniegg::channels]
+} -result 0
+
 cleanupTests
