@@ -1,0 +1,35 @@
+package require tcltest 2
+namespace import ::tcltest::*
+set here [file dirname [file normalize [info script]]]
+source [file join $here .. projects m5-miniegg miniegg.tcl]
+
+test m5-bind-1 {bind records registration} -body {
+    proc ::m5_dummy {n u h c t} { return 0 }
+    bind pub - !dummy ::m5_dummy
+    set b [lindex $::miniegg::binds end]
+    list [dict get $b type] [dict get $b mask] [dict get $b callback]
+} -result {pub !dummy ::m5_dummy}
+
+test m5-output-1 {output rejects CRLF injection} -body {
+    catch {putserv "PRIVMSG #tcl :ok\r\nOPER root"} m o
+    dict get $o -errorcode
+} -result {MINIEGG OUTPUT NEWLINE}
+
+test m5-hello-1 {hello module binds and replies} -setup {
+    ::miniegg::reset
+    source [file join $here .. examples m5 hello.tcl]
+} -body {
+    set n [::miniegg::emit_pub Alice user@host * #tcl {!hello ignored text}]
+    set out [lindex [::miniegg::output] 0]
+    list $n [dict get $out kind] [dict get $out line]
+} -result {1 putserv {PRIVMSG #tcl :Hello, Alice!}}
+
+test m5-hello-2 {Tcl-looking command text remains inert} -setup {
+    ::miniegg::reset
+    source [file join $here .. examples m5 hello.tcl]
+} -body {
+    ::miniegg::emit_pub Alice user@host * #tcl {!hello [error BOOM]; puts BAD}
+    dict get [lindex [::miniegg::output] 0] line
+} -result {PRIVMSG #tcl :Hello, Alice!}
+
+cleanupTests
