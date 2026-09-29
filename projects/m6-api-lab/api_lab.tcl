@@ -8,14 +8,20 @@ namespace eval ::m6host {
     variable output {}
     variable logs {}
     variable ownedBinds {}
+    variable capabilities {}
+    variable requests {}
+    variable nextRequest 0
+    variable requestLimit 16
 }
 
 proc ::m6host::reset {} {
     variable bot; variable channels; variable flags; variable timers; variable nextTimer
     variable output; variable logs; variable ownedBinds
+    variable capabilities; variable requests; variable nextRequest
     set bot [dict create connected 0 nick EduBot network testnet]
     set channels {}; set flags {}; set timers {}; set nextTimer 0
     set output {}; set logs {}; set ownedBinds {}
+    set capabilities {}; set requests {}; set nextRequest 0
 }
 
 proc ::m6host::set_bot {key value} { variable bot; dict set bot $key $value }
@@ -116,4 +122,46 @@ proc ::m6host::safe_child_path {root relative} {
         return -code error -errorcode {M6 PATH ESCAPE} "path escapes module root"
     }
     return $candidate
+}
+
+proc ::m6host::provide {name} { variable capabilities; dict set capabilities $name 1 }
+proc ::m6host::has_capability {name} { variable capabilities; dict exists $capabilities $name }
+
+proc ::m6host::request_start {kind context} {
+    variable requests; variable nextRequest; variable requestLimit
+    if {[dict size $requests] >= $requestLimit} {
+        return -code error -errorcode {M6 REQUEST FULL} "request limit reached"
+    }
+    incr nextRequest
+    set id "r$nextRequest"
+    dict set requests $id [dict create kind $kind context $context]
+    return $id
+}
+proc ::m6host::request_cancel {id} {
+    variable requests
+    if {[dict exists $requests $id]} { dict unset requests $id; return 1 }
+    return 0
+}
+proc ::m6host::request_complete {id result} {
+    variable requests
+    if {![dict exists $requests $id]} {
+        return -code error -errorcode {M6 REQUEST STALE} "stale request"
+    }
+    set req [dict get $requests $id]
+    dict unset requests $id
+    return [dict create request $req result $result]
+}
+proc ::m6host::requests {} { variable requests; return $requests }
+
+proc ::m6host::bot_message {version verb payload} {
+    if {$version ne "1"} {
+        return -code error -errorcode {M6 BOTNET VERSION} "unsupported botnet message version"
+    }
+    if {$verb ni {status reply event}} {
+        return -code error -errorcode {M6 BOTNET VERB} "unsupported botnet verb"
+    }
+    if {[string length $payload] > 512} {
+        return -code error -errorcode {M6 BOTNET LONG} "botnet payload too long"
+    }
+    return [dict create version $version verb $verb payload $payload]
 }
