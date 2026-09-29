@@ -34,8 +34,9 @@ test dispatch-unknown-1 {unknown commands are explicit errors} -setup reset_stat
 } -returnCodes error -result {unknown command: nosuch}
 
 test channels-1 {channel state is structured list data} -setup reset_state -body {
-    ::minibot::dispatch channels
-} -result {{#tcl} #eggdrop}
+    set channels [::minibot::dispatch channels]
+    list [llength $channels] [lindex $channels 0] [lindex $channels 1]
+} -result {2 #tcl #eggdrop}
 
 test unicode-1 {Unicode survives as data} -setup reset_state -body {
     ::minibot::dispatch hello "Blåbær"
