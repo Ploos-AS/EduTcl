@@ -106,4 +106,66 @@ test m5-state-2 {reset clears ephemeral membership} -body {
     dict size [::miniegg::channels]
 } -result 0
 
+test m5-noteboard-1 {add and list notes} -setup {
+    ::miniegg::reset
+    source [file join $here .. projects m5-noteboard noteboard.tcl]
+} -body {
+    ::miniegg::emit_pub Alice a@h alice #tcl {!note add buy milk}
+    ::miniegg::emit_pub Bob b@h bob #tcl {!note list}
+    set lines {}
+    foreach o [::miniegg::output] { lappend lines [dict get $o line] }
+    set lines
+} -result {{PRIVMSG #tcl :note added (#1)} {PRIVMSG #tcl :#1: buy milk}}
+
+test m5-noteboard-2 {Tcl-looking note remains inert data} -setup {
+    ::miniegg::reset
+    namespace eval ::edutcl::noteboard { variable notes {}; variable initialized 0 }
+    source [file join $here .. projects m5-noteboard noteboard.tcl]
+} -body {
+    ::miniegg::emit_pub Alice a@h alice #tcl {!note add [error BOOM]; puts BAD}
+    dict get [lindex $::edutcl::noteboard::notes 0] text
+} -result {[error BOOM]; puts BAD}
+
+test m5-noteboard-3 {clear denied without operator flag} -setup {
+    ::miniegg::reset
+    namespace eval ::edutcl::noteboard { variable notes {}; variable initialized 0 }
+    source [file join $here .. projects m5-noteboard noteboard.tcl]
+    ::miniegg::emit_pub Alice a@h alice #tcl {!note add keep}
+} -body {
+    set n [::miniegg::emit_pub Alice a@h alice #tcl {!noteclear}]
+    list $n [llength $::edutcl::noteboard::notes]
+} -result {0 1}
+
+test m5-noteboard-4 {clear accepted with operator flag} -setup {
+    ::miniegg::reset
+    ::miniegg::set_flags op m
+    namespace eval ::edutcl::noteboard { variable notes {}; variable initialized 0 }
+    source [file join $here .. projects m5-noteboard noteboard.tcl]
+    ::miniegg::emit_pub Alice a@h alice #tcl {!note add remove}
+} -body {
+    set n [::miniegg::emit_pub Oper o@h op #tcl {!noteclear}]
+    list $n [llength $::edutcl::noteboard::notes]
+} -result {1 0}
+
+test m5-noteboard-5 {bounded note state} -setup {
+    ::miniegg::reset
+    namespace eval ::edutcl::noteboard { variable notes {}; variable initialized 0; variable limit 2 }
+    source [file join $here .. projects m5-noteboard noteboard.tcl]
+} -body {
+    ::edutcl::noteboard::add a one
+    ::edutcl::noteboard::add b two
+    catch {::edutcl::noteboard::add c three} m o
+    dict get $o -errorcode
+} -result {EDUTCL NOTEBOARD FULL}
+
+test m5-noteboard-6 {shutdown clears owned state} -setup {
+    ::miniegg::reset
+    namespace eval ::edutcl::noteboard { variable notes {}; variable initialized 0; variable limit 8 }
+    source [file join $here .. projects m5-noteboard noteboard.tcl]
+    ::edutcl::noteboard::add a one
+} -body {
+    ::edutcl::noteboard::shutdown
+    list $::edutcl::noteboard::initialized [llength $::edutcl::noteboard::notes]
+} -result {0 0}
+
 cleanupTests
