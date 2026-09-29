@@ -37,4 +37,41 @@ test m6-timer-2 {invalid timer delay is rejected} -body {
     dict get $o -errorcode
 } -result {M6 TIMER DELAY}
 
+test m6-output-1 {normal output is recorded by intent} -body {
+    ::m6host::reset
+    ::m6host::send help #tcl {hello}
+    dict get [lindex [::m6host::output] 0] queue
+} -result help
+
+test m6-output-2 {protocol injection is rejected} -body {
+    ::m6host::reset
+    catch {::m6host::send normal #tcl "hello\r\nOPER root"} m o
+    dict get $o -errorcode
+} -result {M6 OUTPUT UNSAFE}
+
+test m6-log-1 {structured log event is recorded} -body {
+    ::m6host::reset
+    ::m6host::log info toolkit started
+    dict get [lindex [::m6host::logs] 0] event
+} -result started
+
+test m6-bind-1 {owner teardown removes only owned callbacks} -body {
+    ::m6host::reset
+    ::m6host::bind_own alpha pub !a ::a
+    ::m6host::bind_own beta pub !b ::b
+    set n [::m6host::unbind_owner alpha]
+    list $n [llength [::m6host::binds]] [lindex [lindex [::m6host::binds] 0] 0]
+} -result {1 1 beta}
+
+test m6-path-1 {child path remains below root} -body {
+    set root [file join [pwd] m6data]
+    string equal [::m6host::safe_child_path $root notes/a.txt] [file normalize [file join $root notes a.txt]]
+} -result 1
+
+test m6-path-2 {path traversal is rejected} -body {
+    set root [file join [pwd] m6data]
+    catch {::m6host::safe_child_path $root ../secret} m o
+    dict get $o -errorcode
+} -result {M6 PATH ESCAPE}
+
 cleanupTests
