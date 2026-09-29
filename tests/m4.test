@@ -1,0 +1,70 @@
+package require tcltest 2
+namespace import ::tcltest::*
+set here [file dirname [file normalize [info script]]]
+source [file join $here .. projects m4-miniirc miniirc.tcl]
+
+test m4-parse-1 {basic PRIVMSG} -body {
+    set m [::miniirc::parser::parse {:n!u@h PRIVMSG #tcl :hello world}]
+    list [dict get $m command] [dict get $m nick] [dict get $m params]
+} -result {PRIVMSG n {{#tcl} {hello world}}}
+
+test m4-parse-2 {IRCv3 tags preserved} -body {
+    dict get [::miniirc::parser::parse {@account=alice;flag :n!u@h PRIVMSG #tcl :hi}] tags
+} -result {account alice flag {}}
+
+test m4-parse-3 {Tcl-looking text inert} -body {
+    lindex [dict get [::miniirc::parser::parse {:n!u@h PRIVMSG #tcl :$x [error BOOM] ; puts BAD}] params] 1
+} -result {$x [error BOOM] ; puts BAD}
+
+test m4-parse-4 {newline rejected} -body {
+    catch {::miniirc::parser::parse "PING :x\nOPER bad"} m o
+    dict get $o -errorcode
+} -result {MINIIRC PARSE NEWLINE}
+
+test m4-serialize-1 {safe PRIVMSG} -body {
+    ::miniirc::serializer::message PRIVMSG {#tcl} 1 {hello world}
+} -result {PRIVMSG #tcl :hello world}
+
+test m4-serialize-2 {empty trailing differs from absent} -body {
+    list [::miniirc::serializer::message NOTICE {nick}] [::miniirc::serializer::message NOTICE {nick} 1 ""]
+} -result {{NOTICE nick} {NOTICE nick :}}
+
+test m4-serialize-3 {CRLF injection rejected} -body {
+    catch {::miniirc::serializer::message PRIVMSG {#tcl} 1 "hello\r\nOPER root"} m o
+    dict get $o -errorcode
+} -result {MINIIRC SERIALIZE NEWLINE trailing}
+
+test m4-network-1 {ISUPPORT casemapping} -body {
+    ::miniirc::network::reset; ::miniirc::network::apply CASEMAPPING=ascii
+    ::miniirc::network::casefold {Nick[One]}
+} -result {nick[one]}
+
+test m4-outbox-1 {bounded outbox} -body {
+    ::miniirc::outbox::reset 1; ::miniirc::outbox::put one
+    catch {::miniirc::outbox::put two} m o; dict get $o -errorcode
+} -result {MINIIRC OUTBOX FULL}
+
+test m4-protocol-1 {PING becomes queued PONG} -body {
+    ::miniirc::outbox::reset
+    ::miniirc::connection::handle [::miniirc::parser::parse {PING :abc}]
+    ::miniirc::outbox::get
+} -result {PONG :abc}
+
+test m4-state-1 {001 establishes online state} -body {
+    ::miniirc::state::reset
+    ::miniirc::connection::handle [::miniirc::parser::parse {:srv 001 EduBot :Welcome}]
+    list [::miniirc::state::phase] [dict get [::miniirc::state::snapshot] nick]
+} -result {online EduBot}
+
+test m4-state-2 {disconnect clears stale channels} -body {
+    ::miniirc::network::reset; ::miniirc::state::reset; ::miniirc::state::online EduBot
+    ::miniirc::state::join #tcl; ::miniirc::state::disconnect
+    set s [::miniirc::state::snapshot]
+    list [dict size [dict get $s channels]] [dict get $s synchronized]
+} -result {0 0}
+
+test m4-reconnect-1 {backoff is bounded} -body {
+    list [::miniirc::connection::backoff 0] [::miniirc::connection::backoff 3] [::miniirc::connection::backoff 99]
+} -result {1000 8000 60000}
+
+cleanupTests
