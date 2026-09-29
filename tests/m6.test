@@ -74,4 +74,36 @@ test m6-path-2 {path traversal is rejected} -body {
     dict get $o -errorcode
 } -result {M6 PATH ESCAPE}
 
+test m6-capability-1 {optional capability is explicit} -body {
+    ::m6host::reset
+    set before [::m6host::has_capability dns]
+    ::m6host::provide dns
+    list $before [::m6host::has_capability dns]
+} -result {0 1}
+
+test m6-async-1 {cancelled request rejects late result} -body {
+    ::m6host::reset
+    set id [::m6host::request_start dns [dict create channel #tcl]]
+    ::m6host::request_cancel $id
+    catch {::m6host::request_complete $id 127.0.0.1} m o
+    dict get $o -errorcode
+} -result {M6 REQUEST STALE}
+
+test m6-async-2 {completion consumes request ownership} -body {
+    ::m6host::reset
+    set id [::m6host::request_start dns [dict create channel #tcl]]
+    set result [::m6host::request_complete $id 127.0.0.1]
+    list [dict get $result result] [dict size [::m6host::requests]]
+} -result {127.0.0.1 0}
+
+test m6-botnet-1 {unknown protocol version fails closed} -body {
+    catch {::m6host::bot_message 99 status hello} m o
+    dict get $o -errorcode
+} -result {M6 BOTNET VERSION}
+
+test m6-botnet-2 {payload remains data} -body {
+    set m [::m6host::bot_message 1 event {[error BOOM]; puts BAD}]
+    dict get $m payload
+} -result {[error BOOM]; puts BAD}
+
 cleanupTests
