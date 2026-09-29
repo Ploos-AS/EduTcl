@@ -55,4 +55,28 @@ test persistence-1 {state round trip} -setup {
     removeFile $tmp
 } -result 1
 
+test adversarial-1 {Tcl-looking values remain inert data} -setup reset_state -body {
+    set payload {$name [error BOOM] ; puts BAD \\ {braces}}
+    ::minibot::dispatch hello $payload
+} -result {Hello, $name [error BOOM] ; puts BAD \\ {braces}}
+
+test persistence-invalid-1 {invalid persisted state is rejected and old state survives} -setup {
+    reset_state
+    set tmp [makeFile "not-a-dictionary {" minibot-invalid-state]
+} -body {
+    set before $::minibot::state
+    set code [catch {::minibot::load $tmp} message]
+    list $code $message [expr {$::minibot::state eq $before}]
+} -cleanup {
+    removeFile $tmp
+} -result {1 {invalid MiniBot state} 1}
+
+test persistence-missing-1 {missing state file is an observable error} -setup {
+    reset_state
+    set tmp [makeFile "" minibot-missing-state]
+    removeFile $tmp
+} -body {
+    catch {::minibot::load $tmp} message
+} -result 1
+
 cleanupTests
