@@ -1,0 +1,20 @@
+package require tcltest 2
+namespace import ::tcltest::*
+set here [file dirname [file normalize [info script]]]
+source [file join $here .. projects m3-minibot minibot.tcl]
+proc capture {x} { lappend ::captured $x }
+proc settle {{ms 20}} { set ::settled 0; after $ms {set ::settled 1}; vwait ::settled }
+proc fresh {{limit 16}} { set ::captured {}; ::minibot::core::stop; ::minibot::commands::install; ::minibot::core::start capture $limit }
+
+test m3-queue-1 {bounded queue rejects overload} -body { ::minibot::queue::reset; ::minibot::queue::configure 1; ::minibot::queue::push a; catch {::minibot::queue::push b} m o; list $m [dict get $o -errorcode] } -result {{event queue is full} {MINIBOT QUEUE FULL}}
+test m3-registry-1 {unknown command is structured} -body { ::minibot::commands::install; catch {::minibot::registry::dispatch nope} m o; dict get $o -errorcode } -result {MINIBOT COMMAND UNKNOWN nope}
+test m3-data-1 {Tcl-looking input remains data} -body { fresh; set payload {$name [error BOOM] ; puts BAD}; ::minibot::core::submit echo $payload; settle; lindex $::captured 0 } -result {$name [error BOOM] ; puts BAD}
+test m3-status-1 {status reports running state} -body { fresh; dict get [::minibot::commands::status] state } -result running
+test m3-event-1 {submitted work is event driven} -body { fresh; ::minibot::core::submit echo hello; set before $::captured; settle; list $before $::captured } -result {{} hello}
+test m3-reminder-1 {reminder fires and ownership clears} -body { fresh; ::minibot::registry::dispatch remind 5 wake; settle 20; list $::captured [::minibot::timers::count] } -result {{{reminder: wake}} 0}
+test m3-reminder-2 {shutdown cancels reminder} -body { fresh; ::minibot::registry::dispatch remind 5 stale; ::minibot::core::stop; settle 20; list $::captured [::minibot::timers::count] } -result {{} 0}
+test m3-state-1 {submit after stop rejected} -body { fresh; ::minibot::core::stop; catch {::minibot::core::submit echo no} m o; dict get $o -errorcode } -result {MINIBOT STATE closed}
+test m3-unicode-1 {Unicode survives dispatch} -body { fresh; ::minibot::core::submit echo {Hei verden – blåbær ☃}; settle; lindex $::captured 0 } -result {Hei verden – blåbær ☃}
+test m3-cleanup-1 {stop empties pending queue} -body { fresh; ::minibot::core::submit echo one; ::minibot::core::submit echo two; ::minibot::core::stop; settle; list [::minibot::queue::size] $::captured } -result {0 {}}
+
+cleanupTests
