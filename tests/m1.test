@@ -62,7 +62,7 @@ test adversarial-1 {Tcl-looking values remain inert data} -setup reset_state -bo
 
 test persistence-invalid-1 {invalid persisted state is rejected and old state survives} -setup {
     reset_state
-    set tmp [makeFile "not-a-dictionary {" minibot-invalid-state]
+    set tmp [makeFile "not-a-dictionary" minibot-invalid-state]
 } -body {
     set before $::minibot::state
     set code [catch {::minibot::load $tmp} message]
