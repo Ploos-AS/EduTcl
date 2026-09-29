@@ -1,0 +1,40 @@
+package require tcltest 2
+namespace import ::tcltest::*
+set here [file dirname [file normalize [info script]]]
+source [file join $here .. projects m6-api-lab api_lab.tcl]
+
+test m6-bot-1 {bot facts are explicit host state} -body {
+    ::m6host::reset
+    ::m6host::set_bot connected 1
+    list [::m6host::bot connected] [::m6host::bot nick]
+} -result {1 EduBot}
+
+test m6-channel-1 {membership is runtime state} -body {
+    ::m6host::reset
+    ::m6host::join #tcl Alice alice
+    ::m6host::join #tcl Bob bob
+    set before [lsort [::m6host::members #tcl]]
+    ::m6host::part #tcl Alice
+    list $before [::m6host::members #tcl]
+} -result {{Alice Bob} Bob}
+
+test m6-flags-1 {authorization follows handle flags not nick} -body {
+    ::m6host::reset
+    ::m6host::set_flags alice m
+    list [::m6host::has_flag alice m] [::m6host::has_flag bob m]
+} -result {1 0}
+
+test m6-timer-1 {timer ownership can be cancelled} -body {
+    ::m6host::reset
+    set id [::m6host::timer_add 10 {::module::tick}]
+    set before [dict exists [::m6host::timers] $id]
+    set cancelled [::m6host::timer_cancel $id]
+    list $before $cancelled [dict size [::m6host::timers]]
+} -result {1 1 0}
+
+test m6-timer-2 {invalid timer delay is rejected} -body {
+    catch {::m6host::timer_add -1 noop} m o
+    dict get $o -errorcode
+} -result {M6 TIMER DELAY}
+
+cleanupTests
