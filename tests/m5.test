@@ -149,8 +149,9 @@ test m5-noteboard-4 {clear accepted with operator flag} -setup {
 
 test m5-noteboard-5 {bounded note state} -setup {
     ::miniegg::reset
-    namespace eval ::edutcl::noteboard { variable notes {}; variable initialized 0; variable limit 2 }
+    namespace eval ::edutcl::noteboard { variable notes {}; variable initialized 0 }
     source [file join $here .. projects m5-noteboard noteboard.tcl]
+    set ::edutcl::noteboard::limit 2
 } -body {
     ::edutcl::noteboard::add a one
     ::edutcl::noteboard::add b two
