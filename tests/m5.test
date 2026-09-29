@@ -4,6 +4,7 @@ set here [file dirname [file normalize [info script]]]
 source [file join $here .. projects m5-miniegg miniegg.tcl]
 
 test m5-bind-1 {bind records registration} -body {
+    ::miniegg::reset
     proc ::m5_dummy {n u h c t} { return 0 }
     bind pub - !dummy ::m5_dummy
     set b [lindex $::miniegg::binds end]
@@ -16,8 +17,7 @@ test m5-output-1 {output rejects CRLF injection} -body {
 } -result {MINIEGG OUTPUT NEWLINE}
 
 test m5-hello-1 {hello module binds and replies} -setup {
-    ::miniegg::reset
-    source [file join $here .. examples m5 hello.tcl]
+    ::miniegg::reset; source [file join $here .. examples m5 hello.tcl]
 } -body {
     set n [::miniegg::emit_pub Alice user@host * #tcl {!hello ignored text}]
     set out [lindex [::miniegg::output] 0]
@@ -25,11 +25,54 @@ test m5-hello-1 {hello module binds and replies} -setup {
 } -result {1 putserv {PRIVMSG #tcl :Hello, Alice!}}
 
 test m5-hello-2 {Tcl-looking command text remains inert} -setup {
-    ::miniegg::reset
-    source [file join $here .. examples m5 hello.tcl]
+    ::miniegg::reset; source [file join $here .. examples m5 hello.tcl]
 } -body {
     ::miniegg::emit_pub Alice user@host * #tcl {!hello [error BOOM]; puts BAD}
     dict get [lindex [::miniegg::output] 0] line
 } -result {PRIVMSG #tcl :Hello, Alice!}
+
+test m5-msg-1 {private command dispatch} -setup {
+    ::miniegg::reset; source [file join $here .. examples m5 private-status.tcl]
+} -body {
+    ::miniegg::emit_msg Alice user@host * {status please}
+    dict get [lindex [::miniegg::output] 0] line
+} -result {PRIVMSG Alice :status: running}
+
+test m5-join-1 {join callback dispatch} -setup {
+    ::miniegg::reset; source [file join $here .. examples m5 welcome.tcl]
+} -body {
+    ::miniegg::emit_join Alice user@host * #tcl
+    dict get [lindex [::miniegg::output] 0] line
+} -result {NOTICE Alice :Welcome to #tcl}
+
+test m5-flags-1 {protected command denied without flag} -setup {
+    ::miniegg::reset; source [file join $here .. examples m5 admin-rehash.tcl]
+} -body {
+    list [::miniegg::emit_msg Alice user@host alice {rehash now}] [llength [::miniegg::output]]
+} -result {0 0}
+
+test m5-flags-2 {protected command accepted with flag} -setup {
+    ::miniegg::reset; ::miniegg::set_flags alice m
+    source [file join $here .. examples m5 admin-rehash.tcl]
+} -body {
+    set n [::miniegg::emit_msg Alice user@host alice {rehash now}]
+    list $n [dict get [lindex [::miniegg::output] 0] line]
+} -result {1 {PRIVMSG Alice :authorized administrative command received}}
+
+test m5-events-1 {part sign nick and raw callback contracts} -setup {
+    ::miniegg::reset
+    set ::seen {}
+    proc ::m5_part {n u h c r} { lappend ::seen [list part $n $c $r] }
+    proc ::m5_sign {n u h c r} { lappend ::seen [list sign $n $c $r] }
+    proc ::m5_nick {n u h c nn} { lappend ::seen [list nick $n $c $nn] }
+    proc ::m5_raw {from key text} { lappend ::seen [list raw $from $key $text] }
+    bind part - * ::m5_part; bind sign - * ::m5_sign; bind nick - * ::m5_nick; bind raw - 005 ::m5_raw
+} -body {
+    ::miniegg::emit_part A u h #tcl bye
+    ::miniegg::emit_sign B u h #tcl gone
+    ::miniegg::emit_nick C u h #tcl D
+    ::miniegg::emit_raw server 005 {CASEMAPPING=rfc1459}
+    set ::seen
+} -result {{part A #tcl bye} {sign B #tcl gone} {nick C #tcl D} {raw server 005 CASEMAPPING=rfc1459}}
 
 cleanupTests
