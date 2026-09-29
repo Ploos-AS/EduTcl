@@ -1,0 +1,57 @@
+package require tcltest
+namespace import ::tcltest::*
+
+set here [file dirname [file normalize [info script]]]
+source [file join $here .. projects m1-minibot minibot.tcl]
+
+proc reset_state {} {
+    set ::minibot::state [dict create count 0 channels [list "#tcl" "#eggdrop"]]
+}
+
+test normalize-1 {trim and lowercase command names} -body {
+    ::minibot::normalize "  HeLP "
+} -result help
+
+test dispatch-hello-1 {default greeting} -setup reset_state -body {
+    ::minibot::dispatch hello
+} -result {Hello, world}
+
+test dispatch-hello-2 {argument remains data} -setup reset_state -body {
+    ::minibot::dispatch hello {$x[puts nope];}
+} -result {Hello, $x[puts nope];}
+
+test dispatch-help-1 {help returns a proper list} -setup reset_state -body {
+    ::minibot::dispatch help
+} -result {hello help about count channels quit}
+
+test dispatch-count-1 {commands increment counter} -setup reset_state -body {
+    ::minibot::dispatch about
+    ::minibot::dispatch count
+} -result 2
+
+test dispatch-unknown-1 {unknown commands are explicit errors} -setup reset_state -body {
+    ::minibot::dispatch nosuch
+} -returnCodes error -result {unknown command: nosuch}
+
+test channels-1 {channel state is structured list data} -setup reset_state -body {
+    ::minibot::dispatch channels
+} -result {{#tcl} #eggdrop}
+
+test unicode-1 {Unicode survives as data} -setup reset_state -body {
+    ::minibot::dispatch hello "Blåbær"
+} -result {Hello, Blåbær}
+
+test persistence-1 {state round trip} -setup {
+    reset_state
+    set tmp [makeFile "" minibot-state]
+} -body {
+    ::minibot::dispatch about
+    ::minibot::save $tmp
+    set ::minibot::state [dict create count 99 channels {}]
+    ::minibot::load $tmp
+    dict get $::minibot::state count
+} -cleanup {
+    removeFile $tmp
+} -result 1
+
+cleanupTests
