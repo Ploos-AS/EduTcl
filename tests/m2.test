@@ -1,0 +1,65 @@
+package require tcltest
+namespace import ::tcltest::*
+
+set root [file normalize [file join [file dirname [info script]] ..]]
+set lib [file join $root projects m2-minibot lib]
+foreach module {config state registry commands minibot} {
+    source [file join $lib "$module.tcl"]
+}
+
+proc reset_m2 {} { ::minibot::initialize }
+
+test m2-config-1 {defaults validate} -body {
+    set c [::minibot::config::make]
+    list [dict get $c prefix] [dict get $c channels]
+} -result [list ! [list "#tcl" "#eggdrop"]]
+
+test m2-config-2 {invalid empty prefix has structured error} -body {
+    catch {::minibot::config::make prefix ""} msg opts
+    dict get $opts -errorcode
+} -result {MINIBOT CONFIG INVALID prefix}
+
+test m2-registry-1 {deterministic command names} -setup reset_m2 -body {
+    ::minibot::registry::names
+} -result {about count hello help}
+
+test m2-registry-2 {duplicate has structured error} -setup reset_m2 -body {
+    catch {::minibot::registry::register hello [list puts] duplicate} msg opts
+    lrange [dict get $opts -errorcode] 0 2
+} -result {MINIBOT REGISTRY DUPLICATE}
+
+test m2-dispatch-1 {unicode survives as data} -setup reset_m2 -body {
+    ::minibot::dispatch hello "Blåbær 世界"
+} -result {Hello, Blåbær 世界}
+
+test m2-dispatch-2 {Tcl-looking payload is inert} -setup reset_m2 -body {
+    set payload {$name [error BOOM] ; puts BAD \ {braces}}
+    ::minibot::dispatch hello $payload
+} -result {Hello, $name [error BOOM] ; puts BAD  {braces}}
+
+test m2-dispatch-3 {unknown command has structured error} -setup reset_m2 -body {
+    catch {::minibot::dispatch does-not-exist} msg opts
+    lrange [dict get $opts -errorcode] 0 2
+} -result {MINIBOT REGISTRY UNKNOWN}
+
+test m2-state-1 {state persists structurally} -setup reset_m2 -body {
+    ::minibot::dispatch hello Alice
+    set path [makeFile "" m2-state.txt]
+    ::minibot::state::save $path
+    ::minibot::state::reset
+    ::minibot::state::load $path
+    set n [dict get [::minibot::state::snapshot] count]
+    removeFile m2-state.txt
+    set n
+} -result 1
+
+test m2-state-2 {invalid persisted state rejected without replacing state} -setup reset_m2 -body {
+    ::minibot::dispatch hello Alice
+    set before [::minibot::state::snapshot]
+    set path [makeFile "not a dict {" m2-bad-state.txt]
+    set rc [catch {::minibot::state::load $path} msg opts]
+    removeFile m2-bad-state.txt
+    list $rc [dict get $opts -errorcode] [expr {$before eq [::minibot::state::snapshot]}]
+} -result {1 {MINIBOT STATE INVALID} 1}
+
+cleanupTests
