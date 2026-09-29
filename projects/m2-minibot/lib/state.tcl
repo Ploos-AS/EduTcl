@@ -51,4 +51,4 @@ proc ::minibot::state::load {path} {
     return $data
 }
 
-reset
+::minibot::state::reset
