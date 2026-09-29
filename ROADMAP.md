@@ -23,18 +23,26 @@ EduTcl takes the reader from zero Tcl knowledge to expert-level Tcl for Eggdrop 
 - procedures
 - scope
 - strings and lists
-- first exercises and labs
+- arrays and dictionaries
+- basic error handling
+- basic files and channels
+- MiniBot capstone
+- executable tcltest qualification suite
 
 ## M2 — Practical Tcl
 
-- arrays and dictionaries
-- files and channels
-- regular expressions
-- namespaces
-- packages
-- error handling
+- deeper channel configuration and safe resource cleanup
+- regular expressions and pattern matching
+- namespaces and namespace variables
+- packages and package discovery
+- structured error options and try/trap/finally
 - introspection
-- code organization
+- argument expansion and dynamic composition
+- functional-style list processing
+- configuration patterns
+- code organization across files
+- reusable libraries
+- practical testing patterns
 
 ## M3 — Advanced Tcl
 
