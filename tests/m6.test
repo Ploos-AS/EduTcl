@@ -106,4 +106,60 @@ test m6-botnet-2 {payload remains data} -body {
     dict get $m payload
 } -result {[error BOOM]; puts BAD}
 
+test m6-toolkit-1 {member count comes from host state} -setup {
+    ::m6host::reset
+    source [file join $here .. projects m6-channel-toolkit toolkit.tcl]
+    ::m6host::join #tcl Alice alice
+    ::m6host::join #tcl Bob bob
+} -body {
+    ::edutcl::toolkit::dispatch ::m6host * #tcl members
+} -result {members: 2}
+
+test m6-toolkit-2 {note mutation requires operator flag} -setup {
+    ::m6host::reset
+    ::edutcl::toolkit::reset
+} -body {
+    catch {::edutcl::toolkit::dispatch ::m6host alice #tcl {setnote secret}} m o
+    dict get $o -errorcode
+} -result {TOOLKIT AUTH DENIED}
+
+test m6-toolkit-3 {authorized note round trip} -setup {
+    ::m6host::reset
+    ::edutcl::toolkit::reset
+    ::m6host::set_flags op m
+} -body {
+    set a [::edutcl::toolkit::dispatch ::m6host op #tcl {setnote release tonight}]
+    set b [::edutcl::toolkit::dispatch ::m6host guest #tcl note]
+    list $a $b
+} -result {{note updated} {note: release tonight}}
+
+test m6-toolkit-4 {Tcl-looking note remains inert data} -setup {
+    ::m6host::reset
+    ::edutcl::toolkit::reset
+    ::m6host::set_flags op m
+} -body {
+    ::edutcl::toolkit::dispatch ::m6host op #tcl {setnote [error BOOM]; puts BAD}
+    ::edutcl::toolkit::get_note #tcl
+} -result {[error BOOM]; puts BAD}
+
+test m6-toolkit-5 {bounded channel note state} -setup {
+    ::edutcl::toolkit::reset
+    set ::edutcl::toolkit::maxChannels 2
+} -body {
+    ::edutcl::toolkit::set_note #a one
+    ::edutcl::toolkit::set_note #b two
+    catch {::edutcl::toolkit::set_note #c three} m o
+    dict get $o -errorcode
+} -cleanup {
+    set ::edutcl::toolkit::maxChannels 16
+} -result {TOOLKIT NOTE FULL}
+
+test m6-toolkit-6 {capability report uses host detection} -setup {
+    ::m6host::reset
+    ::m6host::provide dns
+    ::m6host::provide botnet
+} -body {
+    ::edutcl::toolkit::dispatch ::m6host * #tcl capabilities
+} -result {capabilities: dns,botnet}
+
 cleanupTests
